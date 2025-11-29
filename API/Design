@@ -1,0 +1,27 @@
+// JavaScript Example: Reading Entities
+// Filterable fields: project_id, version, file_url, file_name, file_size, description, is_active, comments
+async function fetchDesignEntities() {
+    const response = await fetch(`https://app.base44.com/api/apps/6900d0e4b041f7a0c1a55658/entities/Design`, {
+        headers: {
+            'api_key': 'a4d4da5be2084e7887cbd86313490e84', // or use await User.me() to get the API key
+            'Content-Type': 'application/json'
+        }
+    });
+    const data = await response.json();
+    console.log(data);
+}
+
+// JavaScript Example: Updating an Entity
+// Filterable fields: project_id, version, file_url, file_name, file_size, description, is_active, comments
+async function updateDesignEntity(entityId, updateData) {
+    const response = await fetch(`https://app.base44.com/api/apps/6900d0e4b041f7a0c1a55658/entities/Design/${entityId}`, {
+        method: 'PUT',
+        headers: {
+            'api_key': 'a4d4da5be2084e7887cbd86313490e84', // or use await User.me() to get the API key
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(updateData)
+    });
+    const data = await response.json();
+    console.log(data);
+}

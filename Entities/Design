@@ -1,0 +1,77 @@
+{
+  "name": "Design",
+  "type": "object",
+  "properties": {
+    "project_id": {
+      "type": "string",
+      "description": "ID of the project this design belongs to"
+    },
+    "version": {
+      "type": "number",
+      "description": "Version number of the design"
+    },
+    "file_url": {
+      "type": "string",
+      "description": "URL to the 3D model file (.glb or .gltf)"
+    },
+    "file_name": {
+      "type": "string",
+      "description": "Original name of the uploaded file"
+    },
+    "file_size": {
+      "type": "number",
+      "description": "Size of the file in bytes"
+    },
+    "description": {
+      "type": "string",
+      "description": "Description of changes or notes for this version"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether this version is the active one shown to customer"
+    },
+    "comments": {
+      "type": "array",
+      "description": "Comments and annotations on the model",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "position": {
+            "type": "object",
+            "properties": {
+              "x": {
+                "type": "number"
+              },
+              "y": {
+                "type": "number"
+              },
+              "z": {
+                "type": "number"
+              }
+            }
+          },
+          "text": {
+            "type": "string"
+          },
+          "author": {
+            "type": "string",
+            "enum": [
+              "customer",
+              "admin"
+            ]
+          }
+        }
+      }
+    }
+  },
+  "required": [
+    "project_id",
+    "version",
+    "file_url",
+    "file_name"
+  ]
+}

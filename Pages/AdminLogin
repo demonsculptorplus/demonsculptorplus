@@ -1,0 +1,124 @@
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { createPageUrl } from '@/utils';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
+import { Lock, Mail, Flame } from 'lucide-react';
+
+const ADMIN_EMAIL = 'demonsculptorplus@gmail.com';
+const ADMIN_PASSWORD = 'vid21218';
+
+export default function AdminLogin() {
+  const navigate = useNavigate();
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    // Check if already logged in
+    const adminAuth = localStorage.getItem('dsp_admin_auth');
+    if (adminAuth === 'authenticated') {
+      navigate(createPageUrl('Dashboard'));
+    }
+  }, [navigate]);
+
+  const handleLogin = (e) => {
+    e.preventDefault();
+    setError('');
+    setIsLoading(true);
+
+    // Simple delay to simulate authentication
+    setTimeout(() => {
+      if (email === ADMIN_EMAIL && password === ADMIN_PASSWORD) {
+        localStorage.setItem('dsp_admin_auth', 'authenticated');
+        localStorage.setItem('dsp_admin_email', email);
+        navigate(createPageUrl('Dashboard'));
+      } else {
+        setError('Invalid email or password');
+        setIsLoading(false);
+      }
+    }, 500);
+  };
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-black via-gray-900 to-red-950/20 p-6">
+      <Card className="w-full max-w-md bg-black/60 border-red-800/50 hell-glow backdrop-blur-sm">
+        <CardHeader className="text-center">
+          <img 
+            src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/user_68d94e82cdcaeae25133b256/1ce6c6563_a20fdf19-3501-4378-b91d-23f52b422291.png" 
+            alt="Logo" 
+            className="w-24 h-24 mx-auto mb-4" 
+          />
+          <CardTitle className="text-2xl font-bold flame-text flex items-center justify-center gap-2">
+            <Flame className="w-6 h-6" />
+            Admin Login
+          </CardTitle>
+          <p className="text-gray-400 mt-2">Access the admin dashboard</p>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleLogin} className="space-y-6">
+            <div className="space-y-2">
+              <Label htmlFor="email" className="text-gray-300">Email</Label>
+              <div className="relative">
+                <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500 w-4 h-4" />
+                <Input
+                  id="email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="pl-10 bg-gray-800/50 border-gray-700 text-white"
+                  placeholder="admin@example.com"
+                  required
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="password" className="text-gray-300">Password</Label>
+              <div className="relative">
+                <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500 w-4 h-4" />
+                <Input
+                  id="password"
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="pl-10 bg-gray-800/50 border-gray-700 text-white"
+                  placeholder="Enter password"
+                  required
+                />
+              </div>
+            </div>
+
+            {error && (
+              <div className="bg-red-900/20 border border-red-700/50 rounded-lg p-3 text-center">
+                <p className="text-red-400 text-sm">{error}</p>
+              </div>
+            )}
+
+            <Button
+              type="submit"
+              className="w-full bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800"
+              disabled={isLoading}
+            >
+              {isLoading ? 'Logging in...' : 'Login'}
+            </Button>
+
+            <div className="text-center">
+              <Button
+                type="button"
+                variant="link"
+                onClick={() => navigate(createPageUrl('CustomerView'))}
+                className="text-gray-400 hover:text-gray-300"
+              >
+                ← Back to Customer View
+              </Button>
+            </div>
+          </form>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}

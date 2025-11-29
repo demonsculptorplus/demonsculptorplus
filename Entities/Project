@@ -1,0 +1,40 @@
+{
+  "name": "Project",
+  "type": "object",
+  "properties": {
+    "customer_id": {
+      "type": "string",
+      "description": "ID of the customer this project belongs to"
+    },
+    "name": {
+      "type": "string",
+      "description": "Name of the project"
+    },
+    "description": {
+      "type": "string",
+      "description": "A brief description of the project"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "inactive",
+        "completed"
+      ],
+      "default": "active",
+      "description": "The current status of the project"
+    },
+    "cost": {
+      "type": "number",
+      "description": "Estimated or final cost of the project"
+    },
+    "total_hours": {
+      "type": "number",
+      "description": "Total hours worked on the project"
+    }
+  },
+  "required": [
+    "customer_id",
+    "name"
+  ]
+}

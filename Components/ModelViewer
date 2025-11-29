@@ -1,0 +1,359 @@
+import React, { useEffect, useRef, useState } from 'react';
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { Loader2, Trash2, X } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
+import { AnimatePresence, motion } from 'framer-motion';
+import { Badge } from '@/components/ui/badge';
+
+const uuid = () => Math.random().toString(36).substring(2, 9);
+
+export default function ModelViewer({ modelUrl, comments, onCommentsUpdate }) {
+  const mountRef = useRef(null);
+  const rendererRef = useRef(null);
+  const cameraRef = useRef(null);
+  const sceneRef = useRef(null);
+  const annotationMarkersRef = useRef(new THREE.Group());
+  
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [activeAnnotation, setActiveAnnotation] = useState(null);
+  const [newCommentText, setNewCommentText] = useState("");
+  const [showAllComments, setShowAllComments] = useState(false);
+
+  const onCommentsUpdateRef = useRef(onCommentsUpdate);
+  useEffect(() => { onCommentsUpdateRef.current = onCommentsUpdate; }, [onCommentsUpdate]);
+
+  const commentsRef = useRef(comments);
+  useEffect(() => { commentsRef.current = comments; }, [comments]);
+
+  useEffect(() => {
+    const currentMount = mountRef.current;
+    if (!currentMount || !modelUrl) {
+        setIsLoading(false);
+        setError("No model URL provided.");
+        return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+    let scene, camera, renderer, controls;
+
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0a0a0a);
+    camera = new THREE.PerspectiveCamera(75, currentMount.clientWidth / currentMount.clientHeight, 0.1, 1000);
+    renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setSize(currentMount.clientWidth, currentMount.clientHeight);
+    renderer.setPixelRatio(window.devicePixelRatio);
+    currentMount.appendChild(renderer.domElement);
+    scene.add(annotationMarkersRef.current);
+
+    scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+    const dirLight = new THREE.DirectionalLight(0xffffff, 1);
+    dirLight.position.set(10, 10, 5);
+    scene.add(dirLight);
+
+    controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+    controls.screenSpacePanning = false;
+    controls.minDistance = 1;
+    controls.maxDistance = 500;
+
+    rendererRef.current = renderer;
+    cameraRef.current = camera;
+    sceneRef.current = scene;
+    
+    const loadModel = async () => {
+      try {
+        const fileExtension = modelUrl.split('.').pop().toLowerCase();
+        
+        if (fileExtension === 'gltf' || fileExtension === 'glb') {
+          const gltfLoader = new GLTFLoader();
+          const gltf = await new Promise((resolve, reject) => {
+            gltfLoader.load(modelUrl, resolve, undefined, reject);
+          });
+          
+          const model = gltf.scene;
+          scene.add(model);
+          
+          const box = new THREE.Box3().setFromObject(model);
+          const center = box.getCenter(new THREE.Vector3());
+          const size = box.getSize(new THREE.Vector3());
+          
+          controls.reset();
+          controls.target.copy(center);
+          
+          const maxDim = Math.max(size.x, size.y, size.z);
+          const fov = camera.fov * (Math.PI / 180);
+          let cameraZ = Math.abs(maxDim / 2 / Math.tan(fov / 2));
+          cameraZ *= 1.5;
+          
+          camera.position.copy(center);
+          camera.position.x += size.x / 2.0;
+          camera.position.y += size.y / 2.0;
+          camera.position.z += cameraZ;
+          camera.lookAt(center);
+          
+          controls.update();
+          setIsLoading(false);
+        } else {
+          throw new Error('Currently only GLB and GLTF files are supported. Please convert your model to GLB format.');
+        }
+
+      } catch (err) {
+        console.error("Error loading model:", err);
+        setError(err.message || "Failed to load 3D model. Please check the file format and try again.");
+        setIsLoading(false);
+      }
+    };
+
+    loadModel();
+    
+    const raycaster = new THREE.Raycaster();
+    const mouse = new THREE.Vector2();
+
+    const onDoubleClick = (event) => {
+      const rect = renderer.domElement.getBoundingClientRect();
+      mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+      raycaster.setFromCamera(mouse, camera);
+      
+      const modelObject = scene.children.find(child => 
+        child.type === 'Group' && child !== annotationMarkersRef.current
+      );
+      
+      if (modelObject) {
+        const intersects = raycaster.intersectObject(modelObject, true);
+        if (intersects.length > 0) {
+          const newAnnotation = {
+            id: uuid(),
+            position: { 
+              x: intersects[0].point.x, 
+              y: intersects[0].point.y, 
+              z: intersects[0].point.z 
+            },
+            text: "",
+            author: "customer"
+          };
+          onCommentsUpdateRef.current([...commentsRef.current, newAnnotation]);
+          setActiveAnnotation(newAnnotation);
+        }
+      }
+    };
+    renderer.domElement.addEventListener('dblclick', onDoubleClick);
+    
+    const animate = () => {
+      if (!renderer) return;
+      requestAnimationFrame(animate);
+      controls.update();
+      renderer.render(scene, camera);
+    };
+    animate();
+
+    const handleResize = () => {
+        if (!currentMount || !renderer || !camera) return;
+        camera.aspect = currentMount.clientWidth / currentMount.clientHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(currentMount.clientWidth, currentMount.clientHeight);
+    };
+    window.addEventListener('resize', handleResize);
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      renderer.domElement.removeEventListener('dblclick', onDoubleClick);
+      if(currentMount && renderer.domElement) {
+        currentMount.removeChild(renderer.domElement);
+      }
+      renderer.dispose();
+    };
+  }, [modelUrl]);
+  
+  useEffect(() => {
+    if (!rendererRef.current || !sceneRef.current || !cameraRef.current) return;
+    const renderer = rendererRef.current;
+    
+    annotationMarkersRef.current.clear();
+
+    // SHOW ALL COMMENTS - both admin and customer
+    comments.forEach(comment => {
+      const color = comment.author === 'admin' ? 0x0066ff : 0xff4500;
+      const spriteMaterial = new THREE.SpriteMaterial({ color, sizeAttenuation: false });
+      const sprite = new THREE.Sprite(spriteMaterial);
+      sprite.position.set(comment.position.x, comment.position.y, comment.position.z);
+      sprite.scale.set(0.05, 0.05, 0.05);
+      sprite.userData = { id: comment.id, isAnnotation: true };
+      annotationMarkersRef.current.add(sprite);
+    });
+    
+    const clickListener = (event) => {
+        if (!cameraRef.current || !rendererRef.current) return;
+        
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+        
+        const rect = renderer.domElement.getBoundingClientRect();
+        mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+        mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+        raycaster.setFromCamera(mouse, cameraRef.current);
+        const intersects = raycaster.intersectObjects(annotationMarkersRef.current.children);
+        
+        if (intersects.length > 0 && intersects[0].object.userData.isAnnotation) {
+            const annotationId = intersects[0].object.userData.id;
+            const clickedComment = commentsRef.current.find(c => c.id === annotationId);
+            if (clickedComment) {
+                setActiveAnnotation(clickedComment);
+                setNewCommentText(clickedComment.text || "");
+            }
+        }
+    };
+    renderer.domElement.addEventListener('click', clickListener);
+    
+    return () => {
+        if (renderer && renderer.domElement) {
+            renderer.domElement.removeEventListener('click', clickListener);
+        }
+    }
+  }, [comments]);
+  
+  const handleSaveComment = () => {
+    if(!activeAnnotation) return;
+    const updatedComments = comments.map(c => 
+      c.id === activeAnnotation.id ? { ...c, text: newCommentText } : c
+    );
+    onCommentsUpdate(updatedComments);
+    setActiveAnnotation(null);
+    setNewCommentText("");
+  };
+
+  const handleDeleteComment = (id) => {
+    const commentToDelete = comments.find(c => c.id === id);
+    if(commentToDelete && commentToDelete.author !== 'customer') {
+      alert("You can only delete your own comments.");
+      return;
+    }
+    onCommentsUpdate(comments.filter(c => c.id !== id));
+    setActiveAnnotation(null);
+  };
+  
+  const handleClearAllComments = () => {
+    if (window.confirm("Are you sure you want to clear all your comments?")) {
+      const remainingComments = comments.filter(c => c.author !== 'customer');
+      onCommentsUpdate(remainingComments);
+    }
+  };
+  
+  if (error) return <div className="h-full flex items-center justify-center bg-black"><p className="text-red-500">{error}</p></div>;
+
+  const customerComments = comments.filter(c => c.author === 'customer');
+  const adminComments = comments.filter(c => c.author === 'admin');
+
+  return (
+    <div className="relative w-full h-full">
+      <div ref={mountRef} className="w-full h-full" />
+      {isLoading && (
+        <div className="absolute inset-0 flex items-center justify-center bg-black/50">
+          <Loader2 className="w-8 h-8 animate-spin text-red-400" />
+        </div>
+      )}
+      
+      {!isLoading && (
+        <>
+          <div className="absolute top-4 left-4 flex gap-2">
+            <Button
+              onClick={() => setShowAllComments(!showAllComments)}
+              className="bg-blue-600/80 hover:bg-blue-700/80 backdrop-blur-sm"
+            >
+              {showAllComments ? 'Hide' : 'Show'} All Comments ({comments.length})
+            </Button>
+            {customerComments.length > 0 && (
+              <Button
+                onClick={handleClearAllComments}
+                variant="destructive"
+                size="sm"
+                className="bg-red-600/80 hover:bg-red-700/80 backdrop-blur-sm"
+              >
+                Clear My Comments
+              </Button>
+            )}
+          </div>
+
+          {showAllComments && (
+            <div className="absolute top-16 left-4 w-80 max-h-96 overflow-y-auto bg-black/90 backdrop-blur-sm border border-gray-700 rounded-lg p-4">
+              <h3 className="flame-text font-bold mb-3">All Comments</h3>
+              <div className="space-y-2">
+                {adminComments.length > 0 && (
+                  <div>
+                    <p className="text-xs text-blue-400 font-semibold mb-2">Designer Comments:</p>
+                    {adminComments.map((comment, idx) => (
+                      <div key={comment.id} className="bg-blue-900/20 border border-blue-700/30 rounded p-2 mb-2 cursor-pointer hover:bg-blue-900/30" onClick={() => { setActiveAnnotation(comment); setNewCommentText(comment.text || ""); }}>
+                        <Badge className="bg-blue-600 text-xs mb-1">Designer #{idx + 1}</Badge>
+                        <p className="text-sm text-gray-300">{comment.text || 'No message'}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {customerComments.length > 0 && (
+                  <div>
+                    <p className="text-xs text-orange-400 font-semibold mb-2">Your Comments:</p>
+                    {customerComments.map((comment, idx) => (
+                      <div key={comment.id} className="bg-orange-900/20 border border-orange-700/30 rounded p-2 mb-2 cursor-pointer hover:bg-orange-900/30" onClick={() => { setActiveAnnotation(comment); setNewCommentText(comment.text || ""); }}>
+                        <Badge className="bg-orange-600 text-xs mb-1">You #{idx + 1}</Badge>
+                        <p className="text-sm text-gray-300">{comment.text || 'No message'}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {comments.length === 0 && (
+                  <p className="text-gray-500 text-center py-4">No comments yet. Double-click on the model to add one.</p>
+                )}
+              </div>
+            </div>
+          )}
+        </>
+      )}
+      
+      <AnimatePresence>
+      {activeAnnotation && (
+        <motion.div 
+            initial={{ opacity: 0, x: 100 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 100 }}
+            className="absolute top-0 right-0 h-full w-80 bg-black/90 backdrop-blur-sm border-l border-gray-700 p-4 flex flex-col z-50"
+        >
+            <div className="flex justify-between items-center mb-4">
+                <h3 className="flame-text font-bold text-lg">Comment</h3>
+                <Button variant="ghost" size="icon" onClick={() => setActiveAnnotation(null)}><X className="w-4 h-4" /></Button>
+            </div>
+            
+            <div className="flex-1 space-y-4">
+                <Badge className={`text-xs ${activeAnnotation.author === 'admin' ? 'bg-blue-600' : 'bg-orange-600'}`}>
+                  {activeAnnotation.author === 'admin' ? 'Designer' : 'You'}
+                </Badge>
+                <Textarea 
+                    className="bg-gray-800 border-gray-600 text-white h-40" 
+                    value={newCommentText}
+                    onChange={(e) => setNewCommentText(e.target.value)}
+                    placeholder="Type your comment..."
+                    readOnly={activeAnnotation.author !== 'customer'}
+                />
+                {activeAnnotation.author !== 'customer' && (
+                  <p className="text-xs text-gray-400">You can only edit your own comments.</p>
+                )}
+            </div>
+            
+            <div className="flex gap-2">
+                {activeAnnotation.author === 'customer' && (
+                    <Button variant="destructive" size="icon" onClick={() => handleDeleteComment(activeAnnotation.id)}><Trash2 className="w-4 h-4" /></Button>
+                )}
+                <Button className="w-full" onClick={handleSaveComment} disabled={activeAnnotation.author !== 'customer'}>Save</Button>
+            </div>
+        </motion.div>
+      )}
+      </AnimatePresence>
+    </div>
+  );
+}

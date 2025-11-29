@@ -1,0 +1,395 @@
+import React, { useState, useEffect } from "react";
+import { base44 } from "@/api/base44Client";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Plus, Users, Mail, Edit3, Flame, Trash2, FolderOpen, Key, Copy, Check, ArrowLeft, Search, RefreshCw, Send, ExternalLink } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { Badge } from "@/components/ui/badge";
+import { useNavigate } from "react-router-dom";
+import { createPageUrl } from "@/utils";
+
+const generateAccessCode = () => Math.random().toString(36).substring(2, 10).toUpperCase();
+
+export default function Customers() {
+  const navigate = useNavigate();
+  const [customers, setCustomers] = useState([]);
+  const [projectCounts, setProjectCounts] = useState({});
+  const [showForm, setShowForm] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isEditing, setIsEditing] = useState(false);
+  const [currentCustomer, setCurrentCustomer] = useState(null);
+  const [copiedId, setCopiedId] = useState(null);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [formData, setFormData] = useState({
+    name: "",
+    email: "",
+    access_code: "",
+    notes: ""
+  });
+
+  useEffect(() => {
+    const adminAuth = localStorage.getItem('dsp_admin_auth');
+    if (adminAuth !== 'authenticated') {
+      navigate(createPageUrl('AdminLogin'));
+      return;
+    }
+    loadCustomers();
+  }, [navigate]);
+
+  const loadCustomers = async () => {
+    try {
+      const [customersData, projectsData] = await Promise.all([
+        base44.entities.Customer.list('-created_date'),
+        base44.entities.Project.list()
+      ]);
+      
+      // Count projects per customer
+      const counts = {};
+      projectsData.forEach(p => {
+        counts[p.customer_id] = (counts[p.customer_id] || 0) + 1;
+      });
+      
+      setCustomers(customersData);
+      setProjectCounts(counts);
+    } catch (error) {
+      console.error("Error loading customers:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
+  const handleEditClick = (customer) => {
+    setCurrentCustomer(customer);
+    setFormData({
+      name: customer.name,
+      email: customer.email,
+      access_code: customer.access_code,
+      notes: customer.notes || ""
+    });
+    setIsEditing(true);
+    setShowForm(true);
+  };
+
+  const handleAddNewClick = () => {
+    setIsEditing(false);
+    setCurrentCustomer(null);
+    setFormData({ 
+      name: "", 
+      email: "", 
+      access_code: generateAccessCode(),
+      notes: "" 
+    });
+    setShowForm(true);
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      if (isEditing) {
+        await base44.entities.Customer.update(currentCustomer.id, formData);
+      } else {
+        await base44.entities.Customer.create(formData);
+      }
+      setShowForm(false);
+      setIsEditing(false);
+      setCurrentCustomer(null);
+      loadCustomers();
+    } catch (error) {
+      console.error("Error saving customer:", error);
+    }
+  };
+
+  const handleCancelClick = () => {
+    setShowForm(false);
+    setIsEditing(false);
+    setCurrentCustomer(null);
+    setFormData({ name: "", email: "", access_code: "", notes: "" });
+  };
+  
+  const handleDeleteCustomer = async (customerId) => {
+    if (window.confirm("Are you sure? This will delete the customer and all associated projects and designs! This action cannot be undone.")) {
+      try {
+        await base44.entities.Customer.delete(customerId);
+        loadCustomers();
+      } catch(err) {
+        console.error("Failed to delete customer", err);
+        alert("Error: Could not delete customer. They may have projects associated with them.");
+      }
+    }
+  };
+  
+  const viewCustomerProjects = (customerId) => {
+    navigate(createPageUrl('Projects') + '?customerId=' + encodeURIComponent(customerId));
+  };
+
+  const copyAccessCode = (code, customerId) => {
+    navigator.clipboard.writeText(code);
+    setCopiedId(customerId);
+    setTimeout(() => setCopiedId(null), 2000);
+  };
+
+  const copyCustomerLink = (accessCode) => {
+    const link = `${window.location.origin}${createPageUrl('CustomerView')}`;
+    const message = `Your access code is: ${accessCode}\nView your designs at: ${link}`;
+    navigator.clipboard.writeText(message);
+    alert("Customer link and code copied to clipboard!");
+  };
+
+  const sendEmailToCustomer = (customer) => {
+    const link = `${window.location.origin}${createPageUrl('CustomerView')}`;
+    const subject = encodeURIComponent("Your 3D Design Portal Access");
+    const body = encodeURIComponent(`Hi ${customer.name},\n\nYour access code is: ${customer.access_code}\n\nView your designs at: ${link}\n\nBest regards,\nDemon Sculptor Plus`);
+    window.open(`mailto:${customer.email}?subject=${subject}&body=${body}`);
+  };
+
+  // Filter customers by search
+  const filteredCustomers = customers.filter(customer => 
+    customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    customer.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    customer.access_code.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-black via-gray-900 to-red-950/20 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-500"></div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-black via-gray-900 to-red-950/20 p-6">
+      <div className="max-w-6xl mx-auto">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+          <div className="flex items-center gap-3">
+            <Button 
+              variant="outline" 
+              size="icon" 
+              onClick={() => navigate(createPageUrl('Dashboard'))} 
+              className="border-gray-600 text-gray-300 hover:bg-gray-700/50"
+            >
+              <ArrowLeft className="w-4 h-4" />
+            </Button>
+            <Users className="w-8 h-8 text-red-400" />
+            <div>
+              <h1 className="text-3xl font-bold flame-text">Customer Management</h1>
+              <p className="text-gray-400">{customers.length} total customers</p>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <Button 
+              variant="outline"
+              size="icon"
+              onClick={loadCustomers}
+              className="border-gray-600 text-gray-300 hover:bg-gray-700/50"
+            >
+              <RefreshCw className="w-4 h-4" />
+            </Button>
+            <Button 
+              onClick={handleAddNewClick}
+              className="bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white hell-glow"
+            >
+              <Plus className="w-5 h-5 mr-2" />
+              Add Customer
+            </Button>
+          </div>
+        </div>
+
+        {/* Search Bar */}
+        <div className="mb-6">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500 w-4 h-4" />
+            <Input
+              placeholder="Search customers by name, email, or access code..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-10 bg-gray-800/50 border-gray-700 text-white"
+            />
+          </div>
+        </div>
+
+        <AnimatePresence>
+          {showForm && (
+            <motion.div
+              initial={{ opacity: 0, y: -20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="mb-8"
+            >
+              <Card className="bg-black/40 border-red-800/50 hell-glow">
+                <CardHeader>
+                  <CardTitle className="text-white flex items-center gap-2">
+                    <Flame className="w-5 h-5 text-red-400" />
+                    {isEditing ? 'Edit Customer' : 'Create New Customer'}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <form onSubmit={handleSubmit} className="space-y-6">
+                    <div className="grid md:grid-cols-2 gap-6">
+                      <div className="space-y-2">
+                        <Label htmlFor="name" className="text-gray-300">Customer Name</Label>
+                        <Input id="name" value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} className="bg-gray-800/50 border-gray-700 text-white" placeholder="Enter customer name" required />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="email" className="text-gray-300">Email</Label>
+                        <Input id="email" type="email" value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value})} className="bg-gray-800/50 border-gray-700 text-white" placeholder="customer@example.com" required />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="access_code" className="text-gray-300">Access Code</Label>
+                      <div className="flex gap-2">
+                        <Input 
+                          id="access_code" 
+                          value={formData.access_code} 
+                          onChange={(e) => setFormData({...formData, access_code: e.target.value.toUpperCase()})} 
+                          className="bg-gray-800/50 border-gray-700 text-white font-mono" 
+                          placeholder="ACCESS CODE" 
+                          required 
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => setFormData({...formData, access_code: generateAccessCode()})}
+                          className="border-gray-600 text-gray-300"
+                        >
+                          Generate New
+                        </Button>
+                      </div>
+                      <p className="text-xs text-gray-500">This code allows the customer to access all their projects</p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="notes" className="text-gray-300">Notes (Optional)</Label>
+                      <Textarea id="notes" value={formData.notes} onChange={(e) => setFormData({...formData, notes: e.target.value})} className="bg-gray-800/50 border-gray-700 text-white" placeholder="Additional notes about the customer" rows={3} />
+                    </div>
+
+                    <div className="flex justify-end gap-3">
+                      <Button type="button" variant="outline" onClick={handleCancelClick} className="border-gray-600 text-gray-300 hover:bg-gray-700/50">Cancel</Button>
+                      <Button type="submit" className="bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800">{isEditing ? 'Save Changes' : 'Create Customer'}</Button>
+                    </div>
+                  </form>
+                </CardContent>
+              </Card>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <div className="grid gap-4">
+          <AnimatePresence>
+            {filteredCustomers.map((customer, index) => (
+              <motion.div
+                key={customer.id}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                transition={{ delay: index * 0.05 }}
+              >
+                <Card className="bg-black/30 border-gray-800 hover:bg-black/40 transition-all duration-300 hell-glow">
+                  <CardContent className="p-4 md:p-6">
+                    <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
+                      <div className="flex items-start gap-4 flex-1">
+                        <div className="w-12 h-12 bg-gradient-to-r from-red-500 to-orange-500 rounded-full flex items-center justify-center flex-shrink-0">
+                          <span className="text-white font-bold text-lg">{customer.name.charAt(0).toUpperCase()}</span>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <h3 className="text-xl font-bold text-white truncate">{customer.name}</h3>
+                          <div className="flex flex-wrap gap-2 mt-2">
+                            <Badge variant="outline" className="border-red-600 text-red-400">
+                              <Mail className="w-3 h-3 mr-1" />{customer.email}
+                            </Badge>
+                            <Badge 
+                              variant="outline" 
+                              className="border-orange-600 text-orange-400 font-mono cursor-pointer hover:bg-orange-600/20"
+                              onClick={() => copyAccessCode(customer.access_code, customer.id)}
+                            >
+                              <Key className="w-3 h-3 mr-1" />
+                              {customer.access_code}
+                              {copiedId === customer.id ? (
+                                <Check className="w-3 h-3 ml-1" />
+                              ) : (
+                                <Copy className="w-3 h-3 ml-1" />
+                              )}
+                            </Badge>
+                            <Badge variant="outline" className="border-blue-600 text-blue-400">
+                              {projectCounts[customer.id] || 0} Projects
+                            </Badge>
+                          </div>
+                          {customer.notes && (
+                            <p className="text-gray-400 mt-2 text-sm line-clamp-2">{customer.notes}</p>
+                          )}
+                        </div>
+                      </div>
+                      
+                      <div className="flex flex-wrap gap-2 w-full lg:w-auto">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => viewCustomerProjects(customer.id)}
+                          className="border-blue-600 text-blue-400 hover:bg-blue-600/20 flex-1 lg:flex-none"
+                        >
+                          <FolderOpen className="w-4 h-4 mr-2" />
+                          Projects
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => copyCustomerLink(customer.access_code)}
+                          className="border-green-600 text-green-400 hover:bg-green-600/20"
+                          title="Copy link and access code"
+                        >
+                          <ExternalLink className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => sendEmailToCustomer(customer)}
+                          className="border-purple-600 text-purple-400 hover:bg-purple-600/20"
+                          title="Send email with access code"
+                        >
+                          <Send className="w-4 h-4" />
+                        </Button>
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => handleEditClick(customer)} 
+                          className="border-gray-600 text-gray-300 hover:bg-gray-700/50"
+                        >
+                          <Edit3 className="w-4 h-4" />
+                        </Button>
+                        <Button 
+                          variant="destructive" 
+                          size="sm"
+                          onClick={() => handleDeleteCustomer(customer.id)}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            ))}
+          </AnimatePresence>
+          
+          {filteredCustomers.length === 0 && !isLoading && (
+            <Card className="bg-black/20 border-gray-800 border-dashed">
+              <CardContent className="p-12 text-center">
+                <Users className="w-12 h-12 text-gray-600 mx-auto mb-4" />
+                <h3 className="text-lg font-medium text-gray-400 mb-2">
+                  {searchTerm ? 'No customers match your search' : 'No customers yet'}
+                </h3>
+                <p className="text-gray-500">
+                  {searchTerm ? 'Try a different search term' : 'Create your first customer to get started'}
+                </p>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
